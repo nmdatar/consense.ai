@@ -1,2 +1,2 @@
 # consense.ai
-Deploying AI-augmented NFTs via consensus
+Deploying AI-generated NFTs via consensus
