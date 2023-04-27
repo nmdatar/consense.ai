@@ -9,7 +9,7 @@ import ipfshttpclient
 load_dotenv()
 
 class Server:
-    def __init__(self, host: str, port: int = 8000, id: int = 1) -> None:
+    def __init__(self, host: str, port: int = 8001, id: int = 1) -> None:
         self.host = host
         self.port = port
         self.id = id
@@ -21,7 +21,7 @@ class Server:
         response = openai.Image.create(
             prompt=prompt,
             n=1,
-            size="1024x1024"
+            size="256x256"
         )
         return response
     
@@ -37,7 +37,7 @@ class Server:
             return result
  
 
-    def check_error(self, request_type: str, request: str):
+    def check_error_command(self, request_type: str, request: str):
         request = request.split()
         errno = 0
         commands = ["gen"]
@@ -58,26 +58,18 @@ if __name__ == "__main__":
     server = Server("localhost")
 
     # Validate the input using the check_error method
-    error_code = server.check_error("gen", args.prompt)
+    error_code = server.check_error_command("gen", args.prompt)
     if error_code != 0:
         print("Error: Invalid input. Please provide a valid command.")
         exit(1)
-
     try:
         image_response = server.generate_image(args.prompt)
-    except openai.error.InvalidRequestError as e:
-        if "Billing hard limit has been reached" in str(e):
-            print("Error: Billing hard limit has been reached. Please check your OpenAI account.")
-            exit(1)
-        else:
-            print(f"Error: {str(e)}")
-            exit(1)
+    except Exception as e:
+        print("Exception:", e)
+    
 
     image_url = image_response['data'][0]['url']
+    print("Click on this to view your image: ", image_url)
 
-    ipfs_hash = server.upload_to_ipfs(image_url)
 
-    print(f"Image generated with prompt: {args.prompt}")
-    print(f"IPFS Hash: {ipfs_hash}")
-    print(f"IPFS URL: https://ipfs.io/ipfs/{ipfs_hash}")
     
