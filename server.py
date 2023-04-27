@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 import os
 import argparse
 from typing import List, Dict, Tuple
+import requests
+import ipfshttpclient
 
 load_dotenv()
 
@@ -13,7 +15,7 @@ class Server:
         self.id = id
         openai.api_key = os.getenv('OPENAI_API_KEY')
         self.API_KEY = openai.api_key
-        self.connections = List[Tuple(str, str)]
+        self.connections = List[Tuple[str, str]]
     
     def generate_image(self, prompt: str) -> Dict:
         response = openai.Image.create(
@@ -26,8 +28,14 @@ class Server:
     def send_urls(self, response: Dict) -> str:
         url = response['data'][0]['url']
         for connection in self.connections:
-            connection.send(url.encode())
-
+            connection[0].send(url.encode())
+    
+    def upload_to_ipfs(self, url:str) -> str:
+        image_content = requests.get(url).content
+        with ipfshttpclient.connect() as client:
+            result = client.add_bytes(image_content)
+            return result
+ 
 
     def check_error(self, request_type: str, request: str):
         request = request.split()
@@ -37,14 +45,39 @@ class Server:
             errno = 1
 
         elif request[0] == "gen":
-            if len(request < 2):
+            if len(request) < 2:
                 errno = 1
         
         return errno
 
-
-
-
-
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Generate an image and store it on IPFS.')
+    parser.add_argument('prompt', type=str, help='The image prompt.')
+    args = parser.parse_args()
+
+    server = Server("localhost")
+
+    # Validate the input using the check_error method
+    error_code = server.check_error("gen", args.prompt)
+    if error_code != 0:
+        print("Error: Invalid input. Please provide a valid command.")
+        exit(1)
+
+    try:
+        image_response = server.generate_image(args.prompt)
+    except openai.error.InvalidRequestError as e:
+        if "Billing hard limit has been reached" in str(e):
+            print("Error: Billing hard limit has been reached. Please check your OpenAI account.")
+            exit(1)
+        else:
+            print(f"Error: {str(e)}")
+            exit(1)
+
+    image_url = image_response['data'][0]['url']
+
+    ipfs_hash = server.upload_to_ipfs(image_url)
+
+    print(f"Image generated with prompt: {args.prompt}")
+    print(f"IPFS Hash: {ipfs_hash}")
+    print(f"IPFS URL: https://ipfs.io/ipfs/{ipfs_hash}")
     
