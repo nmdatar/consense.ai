@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "kubo",
+			"path": "../Downloads/kubo"
+		},
+		{
+			"name": "consense.ai",
+			"path": "."
+		}
+	],
+	"settings": {}
+}

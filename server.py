@@ -5,17 +5,23 @@ import argparse
 from typing import List, Dict, Tuple
 import requests
 import ipfshttpclient
+import socket
+import threading
 
 load_dotenv()
 
 class Server:
-    def __init__(self, host: str, port: int = 8001, id: int = 1) -> None:
+    def __init__(self, host: str, port: int = 8000, id: int = 1) -> None:
         self.host = host
         self.port = port
         self.id = id
         openai.api_key = os.getenv('OPENAI_API_KEY')
         self.API_KEY = openai.api_key
-        self.connections = List[Tuple[str, str]]
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.bind((host, port))
+        self.server.listen(5)
+        self.clients = []
+        print(f"Server started on {host}:{port}")
     
     def generate_image(self, prompt: str) -> Dict:
         response = openai.Image.create(
@@ -25,51 +31,41 @@ class Server:
         )
         return response
     
-    def send_urls(self, response: Dict) -> str:
-        url = response['data'][0]['url']
-        for connection in self.connections:
-            connection[0].send(url.encode())
+    def handle_client(self, client: socket.socket):
+        self.clients.append(client)
+        prompt = client.recv(1024).decode().strip()[4:]
+        print(f"Received prompt: {prompt}")
+
+        try:
+            image_response = self.generate_image(prompt)
+            image_url = image_response['data'][0]['url']
+            print("Generated image URL:", image_url)
+            self.send_to_all_clients(image_url)
+            print(f"shared image to", [client.getpeername() for client in self.clients])
+        except Exception as e:
+            print("Exception:", e)
+            self.send_to_all_clients("Error: {e}")
+
+    def send_to_all_clients(self, message: str):
+        for client in self.clients:
+            client.send(message.encode())   
+    
+    def run(self):
+        while True:
+            client, addr = self.server.accept()
+            print(f"New connection from {addr[0]}:{addr[1]}")
+            client_thread = threading.Thread(target=self.handle_client, args=(client,))
+            client_thread.start()
     
     def upload_to_ipfs(self, url:str) -> str:
         image_content = requests.get(url).content
         with ipfshttpclient.connect() as client:
             result = client.add_bytes(image_content)
             return result
- 
-
-    def check_error_command(self, request_type: str, request: str):
-        request = request.split()
-        errno = 0
-        commands = ["gen"]
-        if len(request) == 0 or request[0] not in commands:
-            errno = 1
-
-        elif request[0] == "gen":
-            if len(request) < 2:
-                errno = 1
-        
-        return errno
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Generate an image and store it on IPFS.')
-    parser.add_argument('prompt', type=str, help='The image prompt.')
-    args = parser.parse_args()
-
-    server = Server("localhost")
-
-    # Validate the input using the check_error method
-    error_code = server.check_error_command("gen", args.prompt)
-    if error_code != 0:
-        print("Error: Invalid input. Please provide a valid command.")
-        exit(1)
-    try:
-        image_response = server.generate_image(args.prompt)
-    except Exception as e:
-        print("Exception:", e)
-    
-
-    image_url = image_response['data'][0]['url']
-    print("Click on this to view your image: ", image_url)
+    server = Server("localhost", 8000)
+    server.run()
 
 
     
