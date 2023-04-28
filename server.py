@@ -20,7 +20,8 @@ class Server:
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.bind((host, port))
         self.server.listen(5)
-        self.clients = []
+        self.clients = {}
+        self.generate_available = 0
         print(f"Server started on {host}:{port}")
     
     def generate_image(self, prompt: str) -> Dict:
@@ -30,13 +31,11 @@ class Server:
             size="256x256"
         )
         return response
-    
-    def handle_client(self, client: socket.socket):
-        self.clients.append(client)
-        prompt = client.recv(1024).decode().strip()[4:]
-        print(f"Received prompt: {prompt}")
 
+    def send_image(self, prompt, client):
+        print(self.generate_available)
         try:
+            self.generate_available = 1
             image_response = self.generate_image(prompt)
             image_url = image_response['data'][0]['url']
             print("Generated image URL:", image_url)
@@ -44,11 +43,35 @@ class Server:
             print(f"shared image to", [client.getpeername() for client in self.clients])
         except Exception as e:
             print("Exception:", e)
-            self.send_to_all_clients("Error: {e}")
+            self.send_to_all_clients(f"Error: {e}")
 
     def send_to_all_clients(self, message: str):
         for client in self.clients:
-            client.send(message.encode())   
+            try:
+                client.send(message.encode()) 
+            except (BrokenPipeError, OSError):
+                print(f"Failed to send message to client {client.getpeername()}. Removing from clients list.")
+                client.close()
+                self.clients.pop(client)
+
+    def handle_client(self, client):
+        addr = client.getpeername()
+        self.clients[client] = "active"
+        print("waiting for responses")
+        while True:
+            try:
+                request = client.recv(1024).decode().strip()
+            except OSError:
+                break
+            if request == "quit":
+                self.clients.pop(client)
+                print(f"Client {client} disconnected")
+            elif request[:3] == "gen":
+                self.clients[client] = "active"
+                prompt = request
+                self.send_image(prompt, client)
+                print(f"Received prompt: {prompt}")
+
     
     def run(self):
         while True:
@@ -56,12 +79,6 @@ class Server:
             print(f"New connection from {addr[0]}:{addr[1]}")
             client_thread = threading.Thread(target=self.handle_client, args=(client,))
             client_thread.start()
-    
-    def upload_to_ipfs(self, url:str) -> str:
-        image_content = requests.get(url).content
-        with ipfshttpclient.connect() as client:
-            result = client.add_bytes(image_content)
-            return result
 
 if __name__ == "__main__":
     server = Server("localhost", 8000)
