@@ -80,6 +80,56 @@ class Server:
             client_thread = threading.Thread(target=self.handle_client, args=(client,))
             client_thread.start()
 
+'''
+from flask import Flask, request, jsonify
+import json
+
+app = Flask(__name__)
+
+# In-memory storage for votes
+votes = {}
+
+@app.route('/vote', methods=['POST'])
+def vote():
+    data = request.get_json()
+
+    if not data or 'id' not in data or 'vote' not in data:
+       return jsonify({'error': 'Invalid request'}), 400
+
+    vote_id = data['id']
+    vote_value = data['vote']
+
+    # Initialize the votes for the id, if not already present
+    if vote_id not in votes:
+       votes[vote_id] = {'upvotes': 0, 'downvotes': 0}
+
+    # Update the vote count
+    if vote_value == 'upvote':
+       votes[vote_id]['upvotes'] += 1
+    elif vote_value == 'downvote':
+       votes[vote_id]['downvotes'] += 1
+    else:
+       # Invalid vote value
+       return jsonify({'error': 'Invalid vote value'}), 400
+
+    return jsonify({'message': 'Vote recorded'}), 200
+
+@app.route('/get_votes', methods=['GET'])
+def get_votes():
+    vote_id = request.args.get('id')
+
+    if not vote_id:
+       return jsonify({'error': 'Invalid request'}), 400
+
+    if vote_id not in votes:
+       return jsonify({'error': 'Vote ID not found'}), 404
+
+    return jsonify(votes[vote_id]), 200
+
+if __name__ == '__main__':
+    app.run(debug=True)
+'''
+
 if __name__ == "__main__":
     server = Server("localhost", 8000)
     server.run()
