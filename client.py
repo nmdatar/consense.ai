@@ -21,6 +21,8 @@ class Client:
             errno = 1
         elif request[0] == "gen":
             if len(request) < 2:
+        elif request[0] == "vote":
+            if len(request) != 2 or request[1] not in ["Y", "N"]:
                 errno = 1
         
         return errno
@@ -39,7 +41,7 @@ class Client:
         listen_thread.start()
 
         while True:
-            request = input("Enter a command (gen <parameter>, 'quit' to quit): ")
+            request = input("Enter a command (gen <parameter>, 'vote Y', 'vote N', 'quit' to quit): ")
             
             # Exit the loop and close the client socket
             if request == "quit": 
