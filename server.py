@@ -22,6 +22,7 @@ class Server:
         self.server.listen(5)
         self.clients = {}
         self.generate_available = 0
+        self.image_votes = {} #keep track of votes per image
         print(f"Server started on {host}:{port}")
     
     def generate_image(self, prompt: str) -> Dict:
@@ -40,6 +41,7 @@ class Server:
             image_url = image_response['data'][0]['url']
             print("Generated image URL:", image_url)
             self.send_to_all_clients(image_url)
+            self.image_votes[image_url] = {"Y": 0, "N": 0} #initialize votes
             print(f"shared image to", [client.getpeername() for client in self.clients])
         except Exception as e:
             print("Exception:", e)
@@ -71,6 +73,15 @@ class Server:
                 prompt = request
                 self.send_image(prompt, client)
                 print(f"Received prompt: {prompt}")
+            elif request[:4] == "vote": 
+                vote = request.split()[1]
+                image_url = self.clients[client]
+                if image_url in self.image_votes:
+                    self.image_votes[image_url][vote] += 1
+                    self.send_to_all_clients(f"Vote updated for {image_url}: {self.image_votes[image_url]}")
+                    print(f"Image {image_url} vote updated: {self.image_votes[image_url]}")
+                else:
+                    print(f"Error: Image {image_url} not found in votes")
 
     
     def run(self):
@@ -79,56 +90,6 @@ class Server:
             print(f"New connection from {addr[0]}:{addr[1]}")
             client_thread = threading.Thread(target=self.handle_client, args=(client,))
             client_thread.start()
-
-'''
-from flask import Flask, request, jsonify
-import json
-
-app = Flask(__name__)
-
-# In-memory storage for votes
-votes = {}
-
-@app.route('/vote', methods=['POST'])
-def vote():
-    data = request.get_json()
-
-    if not data or 'id' not in data or 'vote' not in data:
-       return jsonify({'error': 'Invalid request'}), 400
-
-    vote_id = data['id']
-    vote_value = data['vote']
-
-    # Initialize the votes for the id, if not already present
-    if vote_id not in votes:
-       votes[vote_id] = {'upvotes': 0, 'downvotes': 0}
-
-    # Update the vote count
-    if vote_value == 'upvote':
-       votes[vote_id]['upvotes'] += 1
-    elif vote_value == 'downvote':
-       votes[vote_id]['downvotes'] += 1
-    else:
-       # Invalid vote value
-       return jsonify({'error': 'Invalid vote value'}), 400
-
-    return jsonify({'message': 'Vote recorded'}), 200
-
-@app.route('/get_votes', methods=['GET'])
-def get_votes():
-    vote_id = request.args.get('id')
-
-    if not vote_id:
-       return jsonify({'error': 'Invalid request'}), 400
-
-    if vote_id not in votes:
-       return jsonify({'error': 'Vote ID not found'}), 404
-
-    return jsonify(votes[vote_id]), 200
-
-if __name__ == '__main__':
-    app.run(debug=True)
-'''
 
 if __name__ == "__main__":
     server = Server("localhost", 8000)
