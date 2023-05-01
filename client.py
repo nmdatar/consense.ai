@@ -34,6 +34,8 @@ class Client:
         while True:
             response = self.clientsocket.recv(1024).decode()
             print("Image URL: ", response)
+            vote = input("Vote for this image? (Y/N): ")
+            self.send_request(f"vote {vote}")
             return response
 
     def run(self):
