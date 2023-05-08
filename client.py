@@ -4,6 +4,7 @@ import sys
 import select
 import threading
 from datetime import datetime
+import queue
 
 class Client:
     def __init__(self, host: str, port: int) -> None:
@@ -11,7 +12,9 @@ class Client:
         self.clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.host = host
         self.port = port
-
+        self.vote_queue = queue.Queue()
+        self.voting_in_process = False
+        # self.prompt_user_input_event = threading.Event()
 
     # check for error in command line prompt
     def check_error_command(self, request: str):
@@ -27,27 +30,49 @@ class Client:
     def send_request(self, request: str):
         self.clientsocket.send(request.encode())
     
-    def get_vote_and_timestamp(self, vote):
-        print(vote, "asthisasdfavote")
-        while vote not in ['Y', 'N']:
-            vote = input("Invalid vote. Please enter Y or N: ")
-        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        print("vote", vote, timestamp)
-        return vote, timestamp
+    def user_requests(self, request):
+        if request == "quit":
+            self.send_request("quit")
+            print("Client closed.")
+        elif self.check_error_command(request) == 0:
+            self.send_request(request)
+        elif request == "":
+            return
+        else:
+            print("Error: Invalid input. Please provide a valid command.")
+    
+    
+    def handle_user_input(self):
+        while True:
+            print("Enter a command ('gen <parameter>', 'quit' or enter to refresh for proposed image):\n")
+            request = input("")
+            self.user_requests(request)
+
+            
+            if self.voting_in_process:
+                print(f"Send Y/N to vote to mint this image:")
+                vote = input("").upper()
+                timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                vote_message = f"Vote: {vote}, Timestamp: {timestamp}"
+                self.send_request(vote)
+                self.voting_in_process = False
 
     def receive_response(self):
         while True:
             try: 
                 response = self.clientsocket.recv(1024).decode().strip()
-                if "ImageURL" in response:
-                    print(response)
-                    vote = input(f"Send Y/N to vote to mint this image:")
-                    vote, timestamp = self.get_vote_and_timestamp(vote)
-                    vote_message = f"Vote: {vote}, Timestamp: {timestamp}"
-                    # self.send_request(f"{vote}, {timestamp}")
-                    print(vote_message)
-                    self.send_request(vote)
+                if not response:
+                    print(f"No response from server")
                     break
+                elif "ImageURL" in response:
+                    print(response)
+                    self.voting_in_process = True
+                elif "Reconnect" in response:
+                    self.voting_in_process = True
+                elif "Vote Ended" in response:
+                    print(response)
+                    self.voting_in_process = False
+
                 else:
                     print(response)
                     
@@ -60,34 +85,24 @@ class Client:
         try: 
             # Connect to the server
             self.clientsocket.connect((self.host, self.port))
+            # self.prompt_user_input_event.set()
+        
+            listen_thread = threading.Thread(target=self.receive_response)
+            listen_thread.start()
+
+            user_input_thread = threading.Thread(target=self.handle_user_input)
+            user_input_thread.start()
+
+            # Wait for both threads to finish
+            listen_thread.join()
+            user_input_thread.join()
 
         except Exception:
             return 
         
-        listen_thread = threading.Thread(target=self.receive_response)
-        listen_thread.start()
-
-        while True:
-            request = input("Enter a command (gen <parameter>, 'quit' to quit): ")    
-
-            # Check if listen_thread has ended
-            if not listen_thread.is_alive():
-                print("Server closed the connection.")
-                # self.clientsocket.close()
-                return 
-                           
-            # Exit the loop and close the client socket
-            if request == "quit": 
-                self.send_request("quit")
-                self.clientsocket.close()
-                print("Client closed.")
-                break
-            elif self.check_error_command(request) == 0:
-                self.send_request(request)
-                self.receive_response()
-
-            else:
-                print("Error: Invalid input. Please provide a valid command.")
+        # Close the client socket
+        self.clientsocket.close()
+        print("Client closed.")
 
 
 if __name__ == "__main__":
